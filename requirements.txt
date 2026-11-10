@@ -5,5 +5,7 @@ numpy             # 수치 계산 / 데이터 생성
 pandas            # 표/시계열 처리
 matplotlib        # 그래프 시각화
 scikit-learn      # 이상탐지 모델 (후반 단계)
-fastapi           # API 서버 (후반 단계)
-uvicorn           # FastAPI 실행용 (후반 단계)
+fastapi           # API 서버
+uvicorn           # FastAPI 실행용
+sqlalchemy        # DB 연결/쿼리 (Step 5)
+psycopg2-binary   # PostgreSQL 드라이버 (Step 5)
