@@ -1,0 +1,9 @@
+# Satellite Telemetry Monitoring - 라이브러리
+# 설치: pip install -r requirements.txt
+
+numpy             # 수치 계산 / 데이터 생성
+pandas            # 표/시계열 처리
+matplotlib        # 그래프 시각화
+scikit-learn      # 이상탐지 모델 (후반 단계)
+fastapi           # API 서버 (후반 단계)
+uvicorn           # FastAPI 실행용 (후반 단계)
