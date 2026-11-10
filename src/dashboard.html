@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAT-01 Mission Control</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#121823; --panel2:#0e141d; --border:#223042;
+    --text:#e6edf3; --muted:#8b98a9; --grid:#1b2534;
+    --battery:#ff9f45; --comm:#4aa8ff; --solar:#36d399;
+    --nominal:#36d399; --anomaly:#ff5069;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5;}
+  .wrap{max-width:1040px;margin:0 auto;padding:24px 16px 56px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:1.35rem;margin:0;letter-spacing:.3px;}
+  header h1 .sat{color:var(--comm);}
+  .clock{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.95rem;}
+  .sub{color:var(--muted);font-size:.85rem;margin:2px 0 0;}
+
+  /* 상태 배너 */
+  .banner{margin:18px 0;padding:12px 16px;border-radius:10px;font-weight:600;
+          display:flex;align-items:center;gap:10px;border:1px solid var(--border);}
+  .banner.nominal{background:rgba(54,211,153,.10);color:var(--nominal);border-color:rgba(54,211,153,.35);}
+  .banner.anomaly{background:rgba(255,80,105,.12);color:var(--anomaly);border-color:rgba(255,80,105,.45);}
+  .dot{width:10px;height:10px;border-radius:50%;background:currentColor;
+       box-shadow:0 0 0 0 currentColor;animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,255,255,.4);}70%{box-shadow:0 0 0 7px rgba(255,255,255,0);}100%{box-shadow:0 0 0 0 rgba(255,255,255,0);}}
+
+  /* 타일 */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0 8px;}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;}
+  .tile .lbl{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;}
+  .tile .num{font-size:1.7rem;font-weight:700;font-variant-numeric:tabular-nums;margin-top:4px;}
+  .tile .unit{font-size:.9rem;color:var(--muted);font-weight:500;}
+  .tile.battery .num{color:var(--battery);}
+  .tile.comm .num{color:var(--comm);}
+  .tile.solar .num{color:var(--solar);}
+
+  /* 차트 */
+  .charts{margin-top:14px;display:flex;flex-direction:column;gap:14px;}
+  .chart-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px 12px 6px;}
+  .chart-head{display:flex;justify-content:space-between;align-items:center;font-size:.85rem;}
+  .chart-head .name{color:var(--muted);font-weight:600;}
+  .chart-head .cur{font-variant-numeric:tabular-nums;font-weight:700;}
+  canvas{width:100%;height:120px;display:block;margin-top:4px;}
+
+  /* 컨트롤 */
+  .controls{display:flex;gap:10px;align-items:center;margin:20px 0 0;flex-wrap:wrap;}
+  button{background:var(--panel);color:var(--text);border:1px solid var(--border);
+         border-radius:8px;padding:8px 16px;font-size:.9rem;cursor:pointer;}
+  button:hover{border-color:var(--comm);}
+  .controls label{color:var(--muted);font-size:.85rem;display:flex;align-items:center;gap:6px;}
+  .legend{color:var(--muted);font-size:.8rem;margin-top:14px;}
+  .legend b{color:var(--anomaly);}
+  footer{margin-top:28px;color:var(--muted);font-size:.78rem;text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>🛰️ <span class="sat">SAT-01</span> Mission Control</h1>
+      <p class="sub">실시간 Telemetry 모니터링 · z-score 기반 이상탐지</p>
+    </div>
+    <div class="clock" id="clock">--:--</div>
+  </header>
+
+  <div class="banner nominal" id="banner">
+    <span class="dot"></span><span id="banner-text">상태 정상 (NOMINAL)</span>
+  </div>
+
+  <div class="tiles">
+    <div class="tile battery"><div class="lbl">Battery Temp</div><div class="num"><span id="v-battery">–</span><span class="unit"> °C</span></div></div>
+    <div class="tile comm"><div class="lbl">Comm Signal</div><div class="num"><span id="v-comm">–</span></div></div>
+    <div class="tile solar"><div class="lbl">Solar Output</div><div class="num"><span id="v-solar">–</span><span class="unit"> W</span></div></div>
+    <div class="tile"><div class="lbl">Anomalies</div><div class="num"><span id="v-anom">–</span></div></div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <div class="chart-head"><span class="name">Battery Temperature (°C)</span><span class="cur" id="c-battery" style="color:var(--battery)"></span></div>
+      <canvas id="ch-battery"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><span class="name">Communication Signal</span><span class="cur" id="c-comm" style="color:var(--comm)"></span></div>
+      <canvas id="ch-comm"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head"><span class="name">Solar Panel Output (W)</span><span class="cur" id="c-solar" style="color:var(--solar)"></span></div>
+      <canvas id="ch-solar"></canvas>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-play">⏸ 일시정지</button>
+    <button id="btn-reset">↺ 처음부터</button>
+    <label>속도
+      <select id="speed">
+        <option value="1">1×</option>
+        <option value="2" selected>2×</option>
+        <option value="4">4×</option>
+        <option value="8">8×</option>
+      </select>
+    </label>
+  </div>
+
+  <p class="legend">회색 세로선 = 현재 시점 · <b>빨간 점</b> = 이상(과열/통신불량 등) 탐지 지점 · 창에는 최근 120분이 보입니다.</p>
+  <footer>Satellite Telemetry Monitoring · Step 4 Dashboard · 데이터 출처 /api/history</footer>
+</div>
+
+<script>
+const SIGNALS = [
+  {key:"battery_temperature", canvas:"ch-battery", cur:"c-battery", color:"#ff9f45"},
+  {key:"communication_signal", canvas:"ch-comm", cur:"c-comm", color:"#4aa8ff"},
+  {key:"solar_panel_output", canvas:"ch-solar", cur:"c-solar", color:"#36d399"},
+];
+const WIN = 120;            // 화면에 보이는 창(분)
+let data = [], cursor = WIN, playing = true, speed = 2, totalAnom = 0;
+
+function setupCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return {ctx, w, h};
+}
+
+function drawChart(sig){
+  const cv = document.getElementById(sig.canvas);
+  const {ctx, w, h} = setupCanvas(cv);
+  ctx.clearRect(0,0,w,h);
+  const start = Math.max(0, cursor - WIN), end = cursor;
+  const slice = data.slice(start, end);
+  if(slice.length < 2) return;
+  const vals = slice.map(d => d[sig.key]);
+  let min = Math.min(...vals), max = Math.max(...vals);
+  if(max - min < 1e-6){ max += 1; min -= 1; }
+  const pad = (max - min) * 0.15; min -= pad; max += pad;
+  const pl = 6, pr = 6, pt = 8, pb = 8;
+  const X = i => pl + (w - pl - pr) * (i / (WIN - 1));
+  const Y = v => pt + (h - pt - pb) * (1 - (v - min) / (max - min));
+
+  // 가로 그리드
+  ctx.strokeStyle = "#1b2534"; ctx.lineWidth = 1;
+  for(let g=0; g<=2; g++){ const y = pt + (h-pt-pb)*g/2;
+    ctx.beginPath(); ctx.moveTo(pl,y); ctx.lineTo(w-pr,y); ctx.stroke(); }
+
+  // 라인
+  ctx.strokeStyle = sig.color; ctx.lineWidth = 1.6; ctx.beginPath();
+  slice.forEach((d,i)=>{ const x=X(i), y=Y(d[sig.key]);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); });
+  ctx.stroke();
+
+  // 이상 점
+  ctx.fillStyle = "#ff5069";
+  slice.forEach((d,i)=>{ if(d.anomaly){ const x=X(i), y=Y(d[sig.key]);
+    ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill(); } });
+
+  // 현재 시점 세로선 (맨 오른쪽)
+  ctx.strokeStyle = "rgba(139,152,169,.5)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(w-pr, pt); ctx.lineTo(w-pr, h-pb); ctx.stroke();
+}
+
+function fmtClock(iso){
+  const t = new Date(iso);
+  return String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+}
+
+function render(){
+  if(!data.length) return;
+  const cur = data[cursor-1];
+  document.getElementById("clock").textContent = "SIM " + fmtClock(cur.time);
+  document.getElementById("v-battery").textContent = cur.battery_temperature.toFixed(1);
+  document.getElementById("v-comm").textContent = cur.communication_signal.toFixed(1);
+  document.getElementById("v-solar").textContent = cur.solar_panel_output.toFixed(1);
+  // 창 안에서 지금까지 누적 이상 수
+  const seen = data.slice(0, cursor).filter(d=>d.anomaly).length;
+  document.getElementById("v-anom").textContent = seen + " / " + totalAnom;
+
+  SIGNALS.forEach(sig=>{
+    document.getElementById(sig.cur).textContent =
+      cur[sig.key].toFixed(1);
+    drawChart(sig);
+  });
+
+  const banner = document.getElementById("banner");
+  const txt = document.getElementById("banner-text");
+  if(cur.anomaly){
+    banner.className = "banner anomaly";
+    txt.textContent = "⚠ 이상 상태 감지 (ANOMALY) — " + fmtClock(cur.time);
+  }else{
+    banner.className = "banner nominal";
+    txt.textContent = "상태 정상 (NOMINAL)";
+  }
+}
+
+function tick(){
+  if(playing && data.length){
+    cursor += speed;
+    if(cursor >= data.length) cursor = WIN;   // 끝에 닿으면 처음부터 반복
+    render();
+  }
+}
+
+async function init(){
+  try{
+    const res = await fetch("/api/history");
+    const json = await res.json();
+    data = json.series;
+    totalAnom = data.filter(d=>d.anomaly).length;
+    cursor = WIN;
+    render();
+  }catch(e){
+    document.getElementById("banner-text").textContent =
+      "API를 불러오지 못했어요. 서버(04_dashboard.py)가 켜져 있나요?";
+  }
+}
+
+document.getElementById("btn-play").onclick = function(){
+  playing = !playing;
+  this.textContent = playing ? "⏸ 일시정지" : "▶ 재생";
+};
+document.getElementById("btn-reset").onclick = ()=>{ cursor = WIN; render(); };
+document.getElementById("speed").onchange = e => speed = parseInt(e.target.value,10);
+window.addEventListener("resize", ()=>SIGNALS.forEach(drawChart));
+
+init();
+setInterval(tick, 120);
+</script>
+</body>
+</html>
