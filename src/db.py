@@ -49,3 +49,39 @@ def ensure_database() -> None:
                 print(f"    데이터베이스 '{c['db']}' 가 이미 있습니다.")
     finally:
         admin.dispose()
+
+
+ANOMALY_TABLE = "anomaly_events"
+
+
+def ensure_anomaly_table(engine) -> None:
+    """이상 이벤트를 쌓을 테이블을 (없으면) 생성."""
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {ANOMALY_TABLE} (
+                id                   SERIAL PRIMARY KEY,
+                satellite            TEXT NOT NULL,
+                event_time           TIMESTAMP NOT NULL,     -- 위성 상태의 시각
+                detected_at          TIMESTAMP NOT NULL DEFAULT now(),  -- 탐지한 시각
+                flagged              TEXT NOT NULL,          -- 어떤 신호가 왜 이상인지
+                battery_temperature  DOUBLE PRECISION,
+                communication_signal DOUBLE PRECISION,
+                solar_panel_output   DOUBLE PRECISION
+            )
+        """))
+
+
+def insert_anomaly(engine, satellite, event_time, flagged, values: dict) -> None:
+    """이상 이벤트 1건을 저장."""
+    with engine.begin() as conn:
+        conn.execute(text(f"""
+            INSERT INTO {ANOMALY_TABLE}
+                (satellite, event_time, flagged,
+                 battery_temperature, communication_signal, solar_panel_output)
+            VALUES (:sat, :t, :f, :bt, :cs, :sp)
+        """), {
+            "sat": satellite, "t": event_time, "f": flagged,
+            "bt": values["battery_temperature"],
+            "cs": values["communication_signal"],
+            "sp": values["solar_panel_output"],
+        })
